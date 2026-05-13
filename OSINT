@@ -1,0 +1,1146 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>// OSINT TERMINAL // CLASSIFIED</title>
+<link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=VT323&family=IBM+Plex+Mono:wght@300;400;600&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg: #0a0e0a;
+  --bg-deep: #050805;
+  --panel: #0f1410;
+  --grid: #0d2e16;
+  --green: #00ff41;
+  --green-dim: #00b32d;
+  --green-deep: #003b15;
+  --amber: #ffb000;
+  --red: #ff0040;
+  --cyan: #00d9ff;
+  --white: #d4ffd4;
+  --grey: #4a5a4a;
+  --scan: rgba(0, 255, 65, 0.03);
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+html, body {
+  background: var(--bg-deep);
+  color: var(--green);
+  font-family: 'IBM Plex Mono', 'Share Tech Mono', monospace;
+  font-size: 13px;
+  line-height: 1.5;
+  min-height: 100vh;
+  overflow-x: hidden;
+}
+
+/* CRT scanline overlay */
+body::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  background: repeating-linear-gradient(
+    0deg,
+    transparent 0px,
+    transparent 2px,
+    var(--scan) 2px,
+    var(--scan) 3px
+  );
+  pointer-events: none;
+  z-index: 9999;
+  animation: scanmove 8s linear infinite;
+}
+
+/* Vignette + flicker */
+body::after {
+  content: '';
+  position: fixed;
+  inset: 0;
+  background: radial-gradient(ellipse at center, transparent 40%, rgba(0,0,0,0.6) 100%);
+  pointer-events: none;
+  z-index: 9998;
+  animation: flicker 3s infinite;
+}
+
+@keyframes scanmove {
+  0% { background-position: 0 0; }
+  100% { background-position: 0 100px; }
+}
+
+@keyframes flicker {
+  0%, 100% { opacity: 1; }
+  92% { opacity: 1; }
+  93% { opacity: 0.85; }
+  94% { opacity: 1; }
+  96% { opacity: 0.9; }
+  97% { opacity: 1; }
+}
+
+/* Boot screen */
+#boot {
+  position: fixed;
+  inset: 0;
+  background: var(--bg-deep);
+  z-index: 10000;
+  padding: 40px 60px;
+  font-family: 'VT323', monospace;
+  font-size: 18px;
+  color: var(--green);
+  overflow: hidden;
+}
+
+#boot.gone { display: none; }
+
+#boot .line { opacity: 0; animation: typeIn 0.1s forwards; }
+#boot .ok { color: var(--green); }
+#boot .warn { color: var(--amber); }
+#boot .err { color: var(--red); }
+
+@keyframes typeIn {
+  to { opacity: 1; }
+}
+
+/* Main layout */
+.wrap {
+  max-width: 1400px;
+  margin: 0 auto;
+  padding: 24px;
+  position: relative;
+  z-index: 1;
+}
+
+/* Header bar */
+.header {
+  border: 1px solid var(--green-dim);
+  background: var(--panel);
+  padding: 16px 20px;
+  margin-bottom: 20px;
+  position: relative;
+  box-shadow: 0 0 20px rgba(0, 255, 65, 0.1), inset 0 0 30px rgba(0, 255, 65, 0.03);
+}
+
+.header::before {
+  content: '';
+  position: absolute;
+  top: -1px; left: -1px;
+  width: 12px; height: 12px;
+  border-top: 2px solid var(--green);
+  border-left: 2px solid var(--green);
+}
+.header::after {
+  content: '';
+  position: absolute;
+  bottom: -1px; right: -1px;
+  width: 12px; height: 12px;
+  border-bottom: 2px solid var(--green);
+  border-right: 2px solid var(--green);
+}
+
+.header-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 12px;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.brand {
+  font-family: 'VT323', monospace;
+  font-size: 28px;
+  letter-spacing: 2px;
+  color: var(--green);
+  text-shadow: 0 0 8px var(--green-dim);
+}
+
+.brand .blink {
+  animation: blink 1s infinite step-end;
+}
+
+@keyframes blink {
+  50% { opacity: 0; }
+}
+
+.classification {
+  background: var(--red);
+  color: #000;
+  padding: 4px 14px;
+  font-weight: 600;
+  letter-spacing: 3px;
+  font-size: 11px;
+  animation: pulse-red 2s infinite;
+}
+
+@keyframes pulse-red {
+  0%, 100% { box-shadow: 0 0 0 rgba(255, 0, 64, 0.6); }
+  50% { box-shadow: 0 0 20px rgba(255, 0, 64, 0.9); }
+}
+
+.meta-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 8px 24px;
+  font-size: 11px;
+  padding-top: 8px;
+  border-top: 1px dashed var(--green-deep);
+}
+
+.meta-grid div {
+  display: flex;
+  gap: 8px;
+}
+
+.meta-grid .k { color: var(--grey); }
+.meta-grid .v { color: var(--cyan); }
+
+/* Toolbar */
+.toolbar {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 20px;
+  flex-wrap: wrap;
+}
+
+.btn {
+  background: var(--panel);
+  border: 1px solid var(--green-dim);
+  color: var(--green);
+  font-family: inherit;
+  font-size: 11px;
+  padding: 8px 14px;
+  cursor: pointer;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  transition: all 0.15s;
+  position: relative;
+}
+
+.btn:hover {
+  background: var(--green);
+  color: var(--bg-deep);
+  box-shadow: 0 0 12px var(--green-dim);
+}
+
+.btn.danger { border-color: var(--red); color: var(--red); }
+.btn.danger:hover { background: var(--red); color: #000; }
+
+.btn.amber { border-color: var(--amber); color: var(--amber); }
+.btn.amber:hover { background: var(--amber); color: #000; }
+
+/* Sections */
+.section {
+  border: 1px solid var(--green-deep);
+  background: var(--panel);
+  margin-bottom: 16px;
+  position: relative;
+}
+
+.section-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 10px 16px;
+  background: linear-gradient(90deg, var(--green-deep) 0%, transparent 100%);
+  cursor: pointer;
+  user-select: none;
+  border-bottom: 1px solid var(--green-deep);
+}
+
+.section-head:hover { background: linear-gradient(90deg, var(--green-deep) 0%, rgba(0,255,65,0.05) 100%); }
+
+.section-title {
+  font-family: 'Share Tech Mono', monospace;
+  font-size: 14px;
+  letter-spacing: 2px;
+  color: var(--green);
+  text-shadow: 0 0 4px var(--green-dim);
+}
+
+.section-id {
+  color: var(--grey);
+  font-size: 10px;
+  margin-right: 10px;
+}
+
+.section-toggle {
+  color: var(--green-dim);
+  font-size: 12px;
+  transition: transform 0.2s;
+}
+
+.section.collapsed .section-toggle { transform: rotate(-90deg); }
+.section.collapsed .section-body { display: none; }
+
+.section-body {
+  padding: 18px;
+}
+
+/* Fields */
+.field {
+  margin-bottom: 14px;
+}
+
+.field-label {
+  display: block;
+  font-size: 10px;
+  color: var(--grey);
+  margin-bottom: 4px;
+  letter-spacing: 1.5px;
+  text-transform: uppercase;
+}
+
+.field-label::before { content: '> '; color: var(--green-dim); }
+
+.field input,
+.field textarea,
+.field select {
+  width: 100%;
+  background: var(--bg-deep);
+  border: 1px solid var(--green-deep);
+  color: var(--green);
+  font-family: inherit;
+  font-size: 13px;
+  padding: 8px 10px;
+  outline: none;
+  transition: all 0.15s;
+}
+
+.field input:focus,
+.field textarea:focus,
+.field select:focus {
+  border-color: var(--green);
+  box-shadow: 0 0 8px rgba(0, 255, 65, 0.3), inset 0 0 8px rgba(0, 255, 65, 0.05);
+}
+
+.field textarea {
+  resize: vertical;
+  min-height: 70px;
+}
+
+.row {
+  display: grid;
+  gap: 14px;
+}
+.row.r2 { grid-template-columns: 1fr 1fr; }
+.row.r3 { grid-template-columns: 1fr 1fr 1fr; }
+.row.r4 { grid-template-columns: repeat(4, 1fr); }
+
+@media (max-width: 768px) {
+  .row.r2, .row.r3, .row.r4 { grid-template-columns: 1fr; }
+}
+
+/* Repeatable lists */
+.list-block {
+  border: 1px dashed var(--green-deep);
+  padding: 12px;
+  margin-bottom: 10px;
+  background: rgba(0, 255, 65, 0.02);
+  position: relative;
+}
+
+.list-block .idx {
+  position: absolute;
+  top: -8px;
+  left: 10px;
+  background: var(--panel);
+  padding: 0 8px;
+  font-size: 10px;
+  color: var(--amber);
+  letter-spacing: 1px;
+}
+
+.list-block .remove {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  background: transparent;
+  border: 1px solid var(--red);
+  color: var(--red);
+  width: 22px;
+  height: 22px;
+  cursor: pointer;
+  font-size: 11px;
+  line-height: 1;
+}
+
+.list-block .remove:hover { background: var(--red); color: #000; }
+
+.add-btn {
+  background: transparent;
+  border: 1px dashed var(--green-dim);
+  color: var(--green-dim);
+  padding: 6px 14px;
+  font-family: inherit;
+  font-size: 11px;
+  cursor: pointer;
+  letter-spacing: 1px;
+  width: 100%;
+  margin-top: 4px;
+}
+
+.add-btn:hover {
+  border-style: solid;
+  color: var(--green);
+  background: rgba(0, 255, 65, 0.05);
+}
+
+/* Confidence selector colors */
+select.conf-A1, select.conf-A2 { color: var(--green); }
+select.conf-B { color: var(--cyan); }
+select.conf-C, select.conf-D { color: var(--amber); }
+select.conf-E, select.conf-F { color: var(--red); }
+
+/* Status pills */
+.tlp-row { display: flex; gap: 6px; margin-top: 4px; }
+.tlp { font-size: 9px; padding: 2px 6px; letter-spacing: 1px; cursor: pointer; border: 1px solid; }
+.tlp.red { color: var(--red); border-color: var(--red); }
+.tlp.amber { color: var(--amber); border-color: var(--amber); }
+.tlp.green { color: var(--green); border-color: var(--green); }
+.tlp.white { color: var(--white); border-color: var(--white); }
+.tlp.active { background: currentColor; }
+.tlp.active.red { color: #000; background: var(--red); }
+.tlp.active.amber { color: #000; background: var(--amber); }
+.tlp.active.green { color: #000; background: var(--green); }
+.tlp.active.white { color: #000; background: var(--white); }
+
+/* Footer */
+.footer {
+  margin-top: 30px;
+  padding: 14px;
+  border: 1px solid var(--green-deep);
+  background: var(--panel);
+  font-size: 10px;
+  color: var(--grey);
+  display: flex;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.footer .hash {
+  color: var(--cyan);
+  font-family: 'Share Tech Mono', monospace;
+}
+
+/* Status indicator */
+.live-dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  background: var(--green);
+  border-radius: 50%;
+  margin-right: 6px;
+  animation: pulse-dot 1.5s infinite;
+  box-shadow: 0 0 8px var(--green);
+}
+
+@keyframes pulse-dot {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.3; }
+}
+
+/* Glitch on title hover */
+.brand:hover {
+  animation: glitch 0.3s;
+}
+
+@keyframes glitch {
+  0% { transform: translate(0); text-shadow: 0 0 8px var(--green-dim); }
+  20% { transform: translate(-2px, 2px); text-shadow: 2px 0 var(--red), -2px 0 var(--cyan); }
+  40% { transform: translate(2px, -2px); text-shadow: -2px 0 var(--red), 2px 0 var(--cyan); }
+  60% { transform: translate(-1px, 1px); }
+  100% { transform: translate(0); }
+}
+
+/* Print mode */
+@media print {
+  body::before, body::after, #boot { display: none !important; }
+  .toolbar { display: none; }
+  body { background: white; color: black; }
+  .section, .header, .footer { border-color: #333; background: white; }
+  .section-title, .brand, .meta-grid .v { color: black; text-shadow: none; }
+  .field input, .field textarea, .field select {
+    background: white; color: black; border-color: #999;
+  }
+}
+
+/* Hint */
+.hint {
+  font-size: 10px;
+  color: var(--grey);
+  margin-top: 4px;
+  font-style: italic;
+}
+
+.hint::before { content: '// '; color: var(--green-deep); }
+</style>
+</head>
+<body>
+
+<!-- ============== BOOT SCREEN ============== -->
+<div id="boot">
+  <div class="line ok" style="animation-delay:0.1s">[ OK ] BIOS v4.20.1 Initialized</div>
+  <div class="line ok" style="animation-delay:0.25s">[ OK ] Mounting /dev/intel ........................ done</div>
+  <div class="line ok" style="animation-delay:0.4s">[ OK ] Loading kernel modules: osint.ko sigint.ko humint.ko</div>
+  <div class="line ok" style="animation-delay:0.55s">[ OK ] Establishing Tor circuit via 3 relays ......... done</div>
+  <div class="line warn" style="animation-delay:0.7s">[WARN] Outbound DNS leak: ignored (testing mode)</div>
+  <div class="line ok" style="animation-delay:0.85s">[ OK ] Mounting evidence vault (read-only) ......... done</div>
+  <div class="line ok" style="animation-delay:1.0s">[ OK ] Loading NATO Admiralty grading matrix ....... done</div>
+  <div class="line ok" style="animation-delay:1.15s">[ OK ] Spawning analyst session ...................... done</div>
+  <div class="line err" style="animation-delay:1.3s">[FAIL] Plausible deniability module: NOT FOUND</div>
+  <div class="line warn" style="animation-delay:1.45s">[WARN] Operator assumes all legal responsibility.</div>
+  <div class="line ok" style="animation-delay:1.6s">[ OK ] Initializing target dossier interface...</div>
+  <div class="line" style="animation-delay:1.8s; color: var(--cyan);">&gt; ACCESS GRANTED. Welcome, analyst.</div>
+  <div class="line" style="animation-delay:2.0s; color: var(--amber);">&gt; Press any key to continue_<span class="blink">█</span></div>
+</div>
+
+<!-- ============== MAIN ============== -->
+<div class="wrap">
+
+  <!-- HEADER -->
+  <div class="header">
+    <div class="header-top">
+      <div class="brand">// OSINT_TERMINAL <span class="blink">█</span></div>
+      <div class="classification" id="tlpBadge">TLP:AMBER</div>
+    </div>
+    <div class="meta-grid">
+      <div><span class="k">CASE_ID:</span><span class="v" contenteditable="true" data-key="case_id">OSINT-2026-0001</span></div>
+      <div><span class="k">ANALYST:</span><span class="v" contenteditable="true" data-key="analyst">Yoa</span></div>
+      <div><span class="k">DATE:</span><span class="v" id="dateField">--</span></div>
+      <div><span class="k">SUBJECT_TYPE:</span><span class="v">NATURAL_PERSON</span></div>
+      <div><span class="k">SESSION:</span><span class="v"><span class="live-dot"></span>ACTIVE</span></div>
+      <div><span class="k">VERSION:</span><span class="v" contenteditable="true" data-key="version">1.0</span></div>
+    </div>
+    <div class="tlp-row" style="margin-top:10px;">
+      <span class="k" style="font-size:10px; color:var(--grey); margin-right:8px; align-self:center;">CLASSIFICATION:</span>
+      <span class="tlp red" data-tlp="RED">TLP:RED</span>
+      <span class="tlp amber active" data-tlp="AMBER">TLP:AMBER</span>
+      <span class="tlp green" data-tlp="GREEN">TLP:GREEN</span>
+      <span class="tlp white" data-tlp="WHITE">TLP:WHITE</span>
+    </div>
+  </div>
+
+  <!-- TOOLBAR -->
+  <div class="toolbar">
+    <button class="btn" onclick="saveData()">[ SAVE LOCAL ]</button>
+    <button class="btn" onclick="exportJSON()">[ EXPORT .JSON ]</button>
+    <button class="btn amber" onclick="window.print()">[ EXPORT .PDF ]</button>
+    <button class="btn" onclick="loadData()">[ RELOAD ]</button>
+    <button class="btn" onclick="expandAll()">[ EXPAND ALL ]</button>
+    <button class="btn" onclick="collapseAll()">[ COLLAPSE ALL ]</button>
+    <button class="btn danger" onclick="wipeData()">[ WIPE ]</button>
+  </div>
+
+  <!-- ============== SECTION 01: EXECUTIVE SUMMARY ============== -->
+  <div class="section">
+    <div class="section-head" onclick="toggle(this)">
+      <span><span class="section-id">[01]</span><span class="section-title">EXECUTIVE_SUMMARY</span></span>
+      <span class="section-toggle">▼</span>
+    </div>
+    <div class="section-body">
+      <div class="field">
+        <label class="field-label">Resumen ejecutivo (3-5 líneas)</label>
+        <textarea data-key="exec_summary" placeholder="Hallazgo crítico. Qué leería un decisor sin entrar al detalle técnico..."></textarea>
+      </div>
+      <div class="row r3">
+        <div class="field">
+          <label class="field-label">Nivel de riesgo</label>
+          <select data-key="risk_level">
+            <option>-- N/A --</option>
+            <option>CRITICAL</option>
+            <option>HIGH</option>
+            <option>MEDIUM</option>
+            <option>LOW</option>
+            <option>INFORMATIONAL</option>
+          </select>
+        </div>
+        <div class="field">
+          <label class="field-label">Confianza global</label>
+          <select data-key="overall_confidence" class="conf-select">
+            <option>A1 - Confirmed</option>
+            <option>A2 - Probably true</option>
+            <option>B2 - Probably reliable</option>
+            <option>C3 - Possibly true</option>
+            <option>D4 - Doubtful</option>
+            <option>E5 - Improbable</option>
+            <option>F6 - Cannot judge</option>
+          </select>
+        </div>
+        <div class="field">
+          <label class="field-label">Recomendación</label>
+          <select data-key="recommendation">
+            <option>MONITOR</option>
+            <option>ESCALATE</option>
+            <option>REPORT</option>
+            <option>CLOSE</option>
+            <option>DEEPEN_INVESTIGATION</option>
+          </select>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============== SECTION 02: TARGET PROFILE ============== -->
+  <div class="section">
+    <div class="section-head" onclick="toggle(this)">
+      <span><span class="section-id">[02]</span><span class="section-title">TARGET_PROFILE</span></span>
+      <span class="section-toggle">▼</span>
+    </div>
+    <div class="section-body">
+      <div class="row r2">
+        <div class="field">
+          <label class="field-label">Nombre completo</label>
+          <input type="text" data-key="full_name" placeholder="Primer nombre / segundo / apellidos">
+        </div>
+        <div class="field">
+          <label class="field-label">Aliases / Apodos conocidos</label>
+          <input type="text" data-key="aliases" placeholder="alias1, alias2, alias3">
+        </div>
+      </div>
+      <div class="row r3">
+        <div class="field">
+          <label class="field-label">Fecha de nacimiento</label>
+          <input type="text" data-key="dob" placeholder="YYYY-MM-DD o aprox.">
+        </div>
+        <div class="field">
+          <label class="field-label">Género</label>
+          <input type="text" data-key="gender" placeholder="M / F / Otro / Desconocido">
+        </div>
+        <div class="field">
+          <label class="field-label">Nacionalidad</label>
+          <input type="text" data-key="nationality" placeholder="País / múltiples">
+        </div>
+      </div>
+      <div class="row r2">
+        <div class="field">
+          <label class="field-label">Idiomas detectados</label>
+          <input type="text" data-key="languages" placeholder="ES (nativo), EN (B2)...">
+        </div>
+        <div class="field">
+          <label class="field-label">Ocupación / Cargo</label>
+          <input type="text" data-key="occupation" placeholder="Rol profesional o sector">
+        </div>
+      </div>
+      <div class="field">
+        <label class="field-label">Descripción física</label>
+        <textarea data-key="physical_desc" placeholder="Rasgos visibles, marcas distintivas, tatuajes, accesorios recurrentes..."></textarea>
+      </div>
+      <div class="field">
+        <label class="field-label">Notas de identidad</label>
+        <textarea data-key="identity_notes" placeholder="Ambigüedades, posibles homónimos, validaciones cruzadas..."></textarea>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============== SECTION 03: SELECTORS / IDENTIFIERS ============== -->
+  <div class="section">
+    <div class="section-head" onclick="toggle(this)">
+      <span><span class="section-id">[03]</span><span class="section-title">SELECTORS // IDENTIFIERS</span></span>
+      <span class="section-toggle">▼</span>
+    </div>
+    <div class="section-body">
+      <p class="hint">Identificadores únicos pivoteables: emails, phones, usernames, wallets, documentos, IPs.</p>
+      <div id="selectors-list"></div>
+      <button class="add-btn" onclick="addItem('selectors-list', selectorTemplate)">[ + ADD SELECTOR ]</button>
+    </div>
+  </div>
+
+  <!-- ============== SECTION 04: DIGITAL FOOTPRINT ============== -->
+  <div class="section">
+    <div class="section-head" onclick="toggle(this)">
+      <span><span class="section-id">[04]</span><span class="section-title">DIGITAL_FOOTPRINT // SOCIAL_MEDIA</span></span>
+      <span class="section-toggle">▼</span>
+    </div>
+    <div class="section-body">
+      <p class="hint">Cada cuenta en RRSS, foros, plataformas. Incluir handle, URL, fecha de creación si la hay, actividad observada.</p>
+      <div id="social-list"></div>
+      <button class="add-btn" onclick="addItem('social-list', socialTemplate)">[ + ADD ACCOUNT ]</button>
+    </div>
+  </div>
+
+  <!-- ============== SECTION 05: BREACHES & LEAKS ============== -->
+  <div class="section">
+    <div class="section-head" onclick="toggle(this)">
+      <span><span class="section-id">[05]</span><span class="section-title">BREACHES // LEAKS // PASTES</span></span>
+      <span class="section-toggle">▼</span>
+    </div>
+    <div class="section-body">
+      <p class="hint">HIBP, Dehashed, IntelX, paste sites, leaks foros. NO incluir contraseñas en texto plano, solo hashes/indicadores.</p>
+      <div id="breach-list"></div>
+      <button class="add-btn" onclick="addItem('breach-list', breachTemplate)">[ + ADD BREACH ]</button>
+    </div>
+  </div>
+
+  <!-- ============== SECTION 06: GEOLOCATION & PATTERN OF LIFE ============== -->
+  <div class="section">
+    <div class="section-head" onclick="toggle(this)">
+      <span><span class="section-id">[06]</span><span class="section-title">GEOLOCATION // PATTERN_OF_LIFE</span></span>
+      <span class="section-toggle">▼</span>
+    </div>
+    <div class="section-body">
+      <div class="row r2">
+        <div class="field">
+          <label class="field-label">Ubicación principal</label>
+          <input type="text" data-key="primary_location" placeholder="Ciudad, país">
+        </div>
+        <div class="field">
+          <label class="field-label">Huso horario inferido</label>
+          <input type="text" data-key="timezone" placeholder="UTC-4 / America/Santo_Domingo">
+        </div>
+      </div>
+      <div class="field">
+        <label class="field-label">Ubicaciones secundarias / movimientos</label>
+        <textarea data-key="secondary_locations" placeholder="Otras ciudades, frecuencia, fuentes (geotags, check-ins, EXIF, menciones)..."></textarea>
+      </div>
+      <div class="field">
+        <label class="field-label">Rutina inferida (pattern of life)</label>
+        <textarea data-key="pattern_of_life" placeholder="Horarios de actividad online, días pico, eventos recurrentes, contactos frecuentes..."></textarea>
+      </div>
+      <p class="hint">Puntos georreferenciados:</p>
+      <div id="geo-list"></div>
+      <button class="add-btn" onclick="addItem('geo-list', geoTemplate)">[ + ADD GEO POINT ]</button>
+    </div>
+  </div>
+
+  <!-- ============== SECTION 07: RELATIONSHIPS / PIVOTS ============== -->
+  <div class="section">
+    <div class="section-head" onclick="toggle(this)">
+      <span><span class="section-id">[07]</span><span class="section-title">RELATIONSHIPS // PIVOTS</span></span>
+      <span class="section-toggle">▼</span>
+    </div>
+    <div class="section-body">
+      <p class="hint">Conexiones a otras entidades. Tipo: familiar, laboral, comercial, social, técnica (mismo IP/dominio).</p>
+      <div id="rel-list"></div>
+      <button class="add-btn" onclick="addItem('rel-list', relTemplate)">[ + ADD RELATIONSHIP ]</button>
+    </div>
+  </div>
+
+  <!-- ============== SECTION 08: TIMELINE ============== -->
+  <div class="section">
+    <div class="section-head" onclick="toggle(this)">
+      <span><span class="section-id">[08]</span><span class="section-title">TIMELINE_OF_EVENTS</span></span>
+      <span class="section-toggle">▼</span>
+    </div>
+    <div class="section-body">
+      <p class="hint">Eventos relevantes en orden cronológico. Cuanto más granular, mejor.</p>
+      <div id="timeline-list"></div>
+      <button class="add-btn" onclick="addItem('timeline-list', timelineTemplate)">[ + ADD EVENT ]</button>
+    </div>
+  </div>
+
+  <!-- ============== SECTION 09: EVIDENCE INDEX ============== -->
+  <div class="section">
+    <div class="section-head" onclick="toggle(this)">
+      <span><span class="section-id">[09]</span><span class="section-title">EVIDENCE_INDEX // CHAIN_OF_CUSTODY</span></span>
+      <span class="section-toggle">▼</span>
+    </div>
+    <div class="section-body">
+      <p class="hint">Cada hallazgo con: fuente, URL, fecha de captura, hash del artefacto, archive.org, confianza (NATO).</p>
+      <div id="evidence-list"></div>
+      <button class="add-btn" onclick="addItem('evidence-list', evidenceTemplate)">[ + ADD EVIDENCE ]</button>
+    </div>
+  </div>
+
+  <!-- ============== SECTION 10: GAPS & ASSUMPTIONS ============== -->
+  <div class="section">
+    <div class="section-head" onclick="toggle(this)">
+      <span><span class="section-id">[10]</span><span class="section-title">GAPS // ASSUMPTIONS // BIASES</span></span>
+      <span class="section-toggle">▼</span>
+    </div>
+    <div class="section-body">
+      <div class="field">
+        <label class="field-label">Información faltante (lo que NO se sabe)</label>
+        <textarea data-key="gaps" placeholder="Datos no confirmados, áreas sin cobertura, fuentes inaccesibles..."></textarea>
+      </div>
+      <div class="field">
+        <label class="field-label">Supuestos del analista</label>
+        <textarea data-key="assumptions" placeholder="Inferencias razonables pero no probadas, marcar como tales..."></textarea>
+      </div>
+      <div class="field">
+        <label class="field-label">Sesgos potenciales / limitaciones</label>
+        <textarea data-key="biases" placeholder="Confirmation bias, idioma, sesgo de plataforma, cobertura geográfica..."></textarea>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============== SECTION 11: IOCs / SELECTORS PIVOTABLES ============== -->
+  <div class="section">
+    <div class="section-head" onclick="toggle(this)">
+      <span><span class="section-id">[11]</span><span class="section-title">IOCs // PIVOT_TARGETS</span></span>
+      <span class="section-toggle">▼</span>
+    </div>
+    <div class="section-body">
+      <div class="row r2">
+        <div class="field">
+          <label class="field-label">Indicadores duros (uno por línea)</label>
+          <textarea data-key="hard_iocs" rows="6" placeholder="email@dominio.tld&#10;+1234567890&#10;@username&#10;1.2.3.4&#10;hash_sha256:..."></textarea>
+        </div>
+        <div class="field">
+          <label class="field-label">Indicadores blandos / patrones</label>
+          <textarea data-key="soft_iocs" rows="6" placeholder="Patrones de naming, frases recurrentes, estilo de escritura, errores ortográficos típicos..."></textarea>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============== SECTION 12: METHODOLOGY / TRADECRAFT ============== -->
+  <div class="section">
+    <div class="section-head" onclick="toggle(this)">
+      <span><span class="section-id">[12]</span><span class="section-title">METHODOLOGY // TRADECRAFT</span></span>
+      <span class="section-toggle">▼</span>
+    </div>
+    <div class="section-body">
+      <div class="field">
+        <label class="field-label">Queries / Dorks utilizadas</label>
+        <textarea data-key="queries" rows="6" placeholder='site:linkedin.com "nombre"&#10;intext:"email@..."&#10;filetype:pdf "..."&#10;Shodan: hostname:"..."&#10;Hunchly capture IDs...'></textarea>
+      </div>
+      <div class="field">
+        <label class="field-label">Herramientas empleadas</label>
+        <textarea data-key="tools" placeholder="Maltego, SpiderFoot, Sherlock, Holehe, theHarvester, Shodan, Hunchly, Recon-ng, Amass, EXIFtool, Wayback Machine..."></textarea>
+      </div>
+      <div class="field">
+        <label class="field-label">OPSEC del analista</label>
+        <textarea data-key="opsec" placeholder="VPN/Tor utilizado, sock puppets, browser fingerprint mitigations, separación de identidades..."></textarea>
+      </div>
+      <div class="field">
+        <label class="field-label">Consideraciones legales / éticas</label>
+        <textarea data-key="legal" placeholder="Jurisdicción aplicable, GDPR/LGPD, autorización del cliente, marco contractual, limitaciones..."></textarea>
+      </div>
+    </div>
+  </div>
+
+  <!-- FOOTER -->
+  <div class="footer">
+    <div>// END_OF_REPORT // Generated by OSINT_TERMINAL v1.0</div>
+    <div>HASH: <span class="hash" id="hashDisplay">SHA256:------------------------</span></div>
+    <div>// DO NOT DISTRIBUTE WITHOUT AUTHORIZATION //</div>
+  </div>
+
+</div>
+
+<script>
+// ============== BOOT SEQUENCE ==============
+window.addEventListener('load', () => {
+  setTimeout(() => {
+    const dismissBoot = () => {
+      document.getElementById('boot').classList.add('gone');
+      document.removeEventListener('keydown', dismissBoot);
+      document.removeEventListener('click', dismissBoot);
+    };
+    document.addEventListener('keydown', dismissBoot);
+    document.addEventListener('click', dismissBoot);
+    setTimeout(dismissBoot, 4500);
+  }, 100);
+
+  // Date
+  const d = new Date();
+  document.getElementById('dateField').textContent = d.toISOString().split('T')[0] + ' ' + d.toTimeString().split(' ')[0] + 'Z';
+
+  // Restore data
+  loadData();
+  // Populate initial empty entries if empty
+  if (document.querySelectorAll('#selectors-list .list-block').length === 0) addItem('selectors-list', selectorTemplate);
+  if (document.querySelectorAll('#social-list .list-block').length === 0) addItem('social-list', socialTemplate);
+  if (document.querySelectorAll('#evidence-list .list-block').length === 0) addItem('evidence-list', evidenceTemplate);
+
+  generateHash();
+});
+
+// ============== SECTION COLLAPSE ==============
+function toggle(head) {
+  head.parentElement.classList.toggle('collapsed');
+}
+function expandAll() {
+  document.querySelectorAll('.section').forEach(s => s.classList.remove('collapsed'));
+}
+function collapseAll() {
+  document.querySelectorAll('.section').forEach(s => s.classList.add('collapsed'));
+}
+
+// ============== TLP TOGGLE ==============
+document.querySelectorAll('.tlp').forEach(t => {
+  t.addEventListener('click', () => {
+    document.querySelectorAll('.tlp').forEach(x => x.classList.remove('active'));
+    t.classList.add('active');
+    const lvl = t.dataset.tlp;
+    const badge = document.getElementById('tlpBadge');
+    badge.textContent = 'TLP:' + lvl;
+    const colors = { RED: 'var(--red)', AMBER: 'var(--amber)', GREEN: 'var(--green)', WHITE: 'var(--white)' };
+    badge.style.background = colors[lvl];
+    badge.style.color = lvl === 'WHITE' ? '#000' : '#000';
+  });
+});
+
+// ============== TEMPLATES ==============
+function selectorTemplate(idx) {
+  return `
+    <div class="list-block">
+      <span class="idx">SEL_${String(idx).padStart(3,'0')}</span>
+      <button class="remove" onclick="this.parentElement.remove(); generateHash();">×</button>
+      <div class="row r3">
+        <div class="field"><label class="field-label">Tipo</label>
+          <select>
+            <option>EMAIL</option><option>PHONE</option><option>USERNAME</option>
+            <option>WALLET_BTC</option><option>WALLET_ETH</option><option>IP_ADDR</option>
+            <option>DOC_ID</option><option>PASSPORT</option><option>IMEI</option>
+            <option>MAC</option><option>OTHER</option>
+          </select>
+        </div>
+        <div class="field"><label class="field-label">Valor</label><input type="text" placeholder="valor del selector"></div>
+        <div class="field"><label class="field-label">Confianza</label>
+          <select><option>A1</option><option>A2</option><option>B2</option><option>C3</option><option>D4</option><option>E5</option><option>F6</option></select>
+        </div>
+      </div>
+      <div class="field"><label class="field-label">Notas</label><input type="text" placeholder="contexto, fuente, validación"></div>
+    </div>
+  `;
+}
+
+function socialTemplate(idx) {
+  return `
+    <div class="list-block">
+      <span class="idx">SOC_${String(idx).padStart(3,'0')}</span>
+      <button class="remove" onclick="this.parentElement.remove(); generateHash();">×</button>
+      <div class="row r3">
+        <div class="field"><label class="field-label">Plataforma</label>
+          <input type="text" placeholder="X / IG / FB / LinkedIn / TG / Discord / GitHub...">
+        </div>
+        <div class="field"><label class="field-label">Handle</label><input type="text" placeholder="@usuario"></div>
+        <div class="field"><label class="field-label">Estado</label>
+          <select><option>ACTIVE</option><option>DORMANT</option><option>SUSPENDED</option><option>DELETED</option><option>UNKNOWN</option></select>
+        </div>
+      </div>
+      <div class="row r2">
+        <div class="field"><label class="field-label">URL completa</label><input type="text" placeholder="https://..."></div>
+        <div class="field"><label class="field-label">Creación / Primera observación</label><input type="text" placeholder="YYYY-MM"></div>
+      </div>
+      <div class="field"><label class="field-label">Observaciones</label><textarea placeholder="seguidores, frecuencia de posts, temas, idioma, vinculación con otros perfiles..."></textarea></div>
+    </div>
+  `;
+}
+
+function breachTemplate(idx) {
+  return `
+    <div class="list-block">
+      <span class="idx">LK_${String(idx).padStart(3,'0')}</span>
+      <button class="remove" onclick="this.parentElement.remove(); generateHash();">×</button>
+      <div class="row r3">
+        <div class="field"><label class="field-label">Fuente del leak</label><input type="text" placeholder="Collection #1, LinkedIn 2021, MyFitnessPal..."></div>
+        <div class="field"><label class="field-label">Fecha del leak</label><input type="text" placeholder="YYYY-MM"></div>
+        <div class="field"><label class="field-label">Plataforma de descubrimiento</label>
+          <select><option>HIBP</option><option>Dehashed</option><option>IntelX</option><option>Snusbase</option><option>Forum</option><option>Other</option></select>
+        </div>
+      </div>
+      <div class="field"><label class="field-label">Datos expuestos (NO contraseñas en plano)</label><textarea placeholder="email, username, hash type (bcrypt/MD5/sha1), IP, fecha de registro..."></textarea></div>
+    </div>
+  `;
+}
+
+function geoTemplate(idx) {
+  return `
+    <div class="list-block">
+      <span class="idx">GEO_${String(idx).padStart(3,'0')}</span>
+      <button class="remove" onclick="this.parentElement.remove(); generateHash();">×</button>
+      <div class="row r3">
+        <div class="field"><label class="field-label">Lugar</label><input type="text" placeholder="Ciudad / barrio / venue"></div>
+        <div class="field"><label class="field-label">Coordenadas</label><input type="text" placeholder="LAT, LON"></div>
+        <div class="field"><label class="field-label">Fecha observada</label><input type="text" placeholder="YYYY-MM-DD"></div>
+      </div>
+      <div class="field"><label class="field-label">Fuente / Método</label><input type="text" placeholder="EXIF foto / geotag IG / mención post / chronolocalización..."></div>
+    </div>
+  `;
+}
+
+function relTemplate(idx) {
+  return `
+    <div class="list-block">
+      <span class="idx">REL_${String(idx).padStart(3,'0')}</span>
+      <button class="remove" onclick="this.parentElement.remove(); generateHash();">×</button>
+      <div class="row r3">
+        <div class="field"><label class="field-label">Entidad relacionada</label><input type="text" placeholder="Nombre / handle / empresa"></div>
+        <div class="field"><label class="field-label">Tipo de vínculo</label>
+          <select><option>FAMILY</option><option>WORK</option><option>BUSINESS</option><option>SOCIAL</option><option>TECHNICAL</option><option>FINANCIAL</option><option>UNKNOWN</option></select>
+        </div>
+        <div class="field"><label class="field-label">Fuerza del vínculo</label>
+          <select><option>STRONG</option><option>MODERATE</option><option>WEAK</option><option>HISTORICAL</option></select>
+        </div>
+      </div>
+      <div class="field"><label class="field-label">Evidencia / Descripción</label><textarea placeholder="cómo se estableció el vínculo, fuentes, fechas..."></textarea></div>
+    </div>
+  `;
+}
+
+function timelineTemplate(idx) {
+  return `
+    <div class="list-block">
+      <span class="idx">EVT_${String(idx).padStart(3,'0')}</span>
+      <button class="remove" onclick="this.parentElement.remove(); generateHash();">×</button>
+      <div class="row r2">
+        <div class="field"><label class="field-label">Fecha / Hora</label><input type="text" placeholder="YYYY-MM-DD HH:MM UTC"></div>
+        <div class="field"><label class="field-label">Categoría</label>
+          <select><option>POST</option><option>ACCOUNT_CREATED</option><option>LOCATION</option><option>RELATIONSHIP</option><option>BREACH</option><option>TRANSACTION</option><option>OTHER</option></select>
+        </div>
+      </div>
+      <div class="field"><label class="field-label">Evento</label><textarea placeholder="Qué pasó, dónde, fuente..."></textarea></div>
+    </div>
+  `;
+}
+
+function evidenceTemplate(idx) {
+  return `
+    <div class="list-block">
+      <span class="idx">EV_${String(idx).padStart(3,'0')}</span>
+      <button class="remove" onclick="this.parentElement.remove(); generateHash();">×</button>
+      <div class="row r3">
+        <div class="field"><label class="field-label">Descripción</label><input type="text" placeholder="screenshot perfil X / post / artículo..."></div>
+        <div class="field"><label class="field-label">Fuente / URL</label><input type="text" placeholder="https://..."></div>
+        <div class="field"><label class="field-label">Fecha de captura</label><input type="text" placeholder="YYYY-MM-DD"></div>
+      </div>
+      <div class="row r3">
+        <div class="field"><label class="field-label">SHA-256 del artefacto</label><input type="text" placeholder="hash..."></div>
+        <div class="field"><label class="field-label">Archive.org URL</label><input type="text" placeholder="https://web.archive.org/..."></div>
+        <div class="field"><label class="field-label">Confianza (NATO)</label>
+          <select><option>A1</option><option>A2</option><option>B2</option><option>C3</option><option>D4</option><option>E5</option><option>F6</option></select>
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+// ============== ADD ITEM ==============
+let counters = { 'selectors-list': 0, 'social-list': 0, 'breach-list': 0, 'geo-list': 0, 'rel-list': 0, 'timeline-list': 0, 'evidence-list': 0 };
+
+function addItem(listId, templateFn) {
+  counters[listId] = (counters[listId] || 0) + 1;
+  const wrap = document.createElement('div');
+  wrap.innerHTML = templateFn(counters[listId]);
+  document.getElementById(listId).appendChild(wrap.firstElementChild);
+  attachAutoSave();
+  generateHash();
+}
+
+// ============== AUTO-SAVE ==============
+function attachAutoSave() {
+  document.querySelectorAll('input, textarea, select, [contenteditable]').forEach(el => {
+    if (el._asAttached) return;
+    el._asAttached = true;
+    const ev = el.hasAttribute('contenteditable') ? 'input' : 'change';
+    el.addEventListener(ev, () => { saveData(); generateHash(); });
+    if (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA') {
+      el.addEventListener('input', () => { saveData(); generateHash(); });
+    }
+  });
+}
+
+function saveData() {
+  const data = {
+    fields: {},
+    lists: {},
+    tlp: document.querySelector('.tlp.active')?.dataset.tlp || 'AMBER'
+  };
+  document.querySelectorAll('[data-key]').forEach(el => {
+    data.fields[el.dataset.key] = el.tagName === 'SPAN' ? el.textContent : el.value;
+  });
+  ['selectors-list', 'social-list', 'breach-list', 'geo-list', 'rel-list', 'timeline-list', 'evidence-list'].forEach(id => {
+    data.lists[id] = document.getElementById(id).innerHTML;
+  });
+  try {
+    window._lastData = JSON.stringify(data);
+    // localStorage no disponible en artifacts, usar memoria
+  } catch (e) {}
+}
+
+function loadData() {
+  try {
+    if (!window._lastData) return;
+    const data = JSON.parse(window._lastData);
+    Object.entries(data.fields || {}).forEach(([k, v]) => {
+      const el = document.querySelector(`[data-key="${k}"]`);
+      if (el) {
+        if (el.tagName === 'SPAN') el.textContent = v;
+        else el.value = v;
+      }
+    });
+    Object.entries(data.lists || {}).forEach(([k, v]) => {
+      const el = document.getElementById(k);
+      if (el && v) el.innerHTML = v;
+    });
+    attachAutoSave();
+  } catch (e) {}
+}
+
+function wipeData() {
+  if (!confirm('// CONFIRM WIPE //\nEsto borrará TODOS los datos del reporte actual. ¿Continuar?')) return;
+  document.querySelectorAll('input, textarea').forEach(el => el.value = '');
+  document.querySelectorAll('[contenteditable]').forEach(el => {
+    if (el.dataset.key === 'case_id') el.textContent = 'OSINT-2026-0001';
+    else if (el.dataset.key === 'analyst') el.textContent = 'Yoa';
+    else if (el.dataset.key === 'version') el.textContent = '1.0';
+  });
+  ['selectors-list', 'social-list', 'breach-list', 'geo-list', 'rel-list', 'timeline-list', 'evidence-list'].forEach(id => {
+    document.getElementById(id).innerHTML = '';
+  });
+  counters = { 'selectors-list': 0, 'social-list': 0, 'breach-list': 0, 'geo-list': 0, 'rel-list': 0, 'timeline-list': 0, 'evidence-list': 0 };
+  window._lastData = null;
+  generateHash();
+}
+
+function exportJSON() {
+  const data = {
+    case_id: document.querySelector('[data-key="case_id"]').textContent,
+    analyst: document.querySelector('[data-key="analyst"]').textContent,
+    date: new Date().toISOString(),
+    tlp: document.querySelector('.tlp.active')?.dataset.tlp || 'AMBER',
+    fields: {},
+    selectors: [],
+    social: [],
+    breaches: [],
+    geo: [],
+    relationships: [],
+    timeline: [],
+    evidence: []
+  };
+  document.querySelectorAll('[data-key]').forEach(el => {
+    if (!['case_id','analyst','version'].includes(el.dataset.key)) {
+      data.fields[el.dataset.key] = el.tagName === 'SPAN' ? el.textContent : el.value;
+    }
+  });
+  // Extract list data
+  const listMap = {
+    'selectors-list': 'selectors', 'social-list': 'social', 'breach-list': 'breaches',
+    'geo-list': 'geo', 'rel-list': 'relationships', 'timeline-list': 'timeline', 'evidence-list': 'evidence'
+  };
+  Object.entries(listMap).forEach(([listId, key]) => {
+    document.querySelectorAll(`#${listId} .list-block`).forEach(block => {
+      const entry = {};
+      block.querySelectorAll('input, textarea, select').forEach((f, i) => {
+        const lbl = f.closest('.field')?.querySelector('.field-label')?.textContent?.trim() || `field_${i}`;
+        entry[lbl] = f.value;
+      });
+      data[key].push(entry);
+    });
+  });
+  const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `${data.case_id}_${new Date().toISOString().split('T')[0]}.json`;
+  a.click();
+}
+
+// ============== HASH DISPLAY (visual integrity) ==============
+async function generateHash() {
+  try {
+    const content = document.body.innerText.slice(0, 5000);
+    const buf = new TextEncoder().encode(content);
+    const hashBuf = await crypto.subtle.digest('SHA-256', buf);
+    const hex = Array.from(new Uint8Array(hashBuf)).map(b => b.toString(16).padStart(2, '0')).join('');
+    document.getElementById('hashDisplay').textContent = 'SHA256:' + hex.slice(0, 24) + '...';
+  } catch (e) {}
+}
+
+// Init auto-save bindings
+setTimeout(attachAutoSave, 500);
+</script>
+</body>
+</html>
